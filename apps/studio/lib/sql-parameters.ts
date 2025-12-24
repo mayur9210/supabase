@@ -1,3 +1,5 @@
+import { literal } from '@supabase/pg-meta/src/pg-format'
+
 export interface Parameter {
   name: string
   value: string
@@ -69,7 +71,7 @@ export const parseParameters = (sql: string | undefined) => {
 export const processParameterizedSql = (sql: string, parameters: Record<string, string>) => {
   // Parse @set parameter defaults with type information from SQL
   const setParamRegex = /@set\s+(\w+)(?::([^=]+))?\s*=\s*([^;\n]+)/g
-  const paramDefaults: Record<string, { value: string; type?: string; possibleValues?: string[] }> =
+  const paramDefaults:  Record<string, { value: string; type?: string; possibleValues?: string[] }> =
     {}
   let match
 
@@ -77,7 +79,7 @@ export const processParameterizedSql = (sql: string, parameters: Record<string, 
     const [_, paramName, paramType, paramValue] = match
     if (!paramName || !paramValue?.trim()) continue
 
-    const typeInfo = paramType?.trim()
+    const typeInfo = paramType?. trim()
     let type: string | undefined
     let possibleValues: string[] | undefined
 
@@ -100,14 +102,17 @@ export const processParameterizedSql = (sql: string, parameters: Record<string, 
   // Remove @set lines from SQL
   let processedSql = sql.replace(/@set\s+\w+(?:\s*:\s*[^=]+)?\s*=\s*[^;\n]+[\n;]*/g, '')
 
-  // Replace :parameters with values
+  // Replace :parameters with properly escaped values
   const paramRegex = /:(\w+)/g
   processedSql = processedSql.replace(paramRegex, (match, paramName) => {
     const value = parameters[paramName] ?? paramDefaults[paramName]?.value
     if (value === undefined) {
       throw new Error(`Missing value for parameter: ${paramName}`)
     }
-    return value
+    
+    // SECURITY FIX: Use literal() to properly escape and quote SQL values
+    // This prevents SQL injection by treating user input as data, not code
+    return literal(value)
   })
 
   return processedSql
